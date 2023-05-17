@@ -2,7 +2,7 @@
 # source
 resolution.json from https://en.wikipedia.org/wiki/List_of_common_resolutions
 
-# install
+# install
 virtualenv photobooth
 source ~/photobooth/bin/activate 
 pip install opencv-python
