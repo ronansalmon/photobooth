@@ -1,6 +1,5 @@
 import cv2 
 import json
-from random import shuffle
 import time
 import os
 import configparser
@@ -8,34 +7,23 @@ import configparser
 
 class PhotoBooth():
   def __init__(self):
-    self.application = "PhotoBooth"
     
-    # Load default resolution list
-    f = open('resolution.json')
-    resolution = json.load(f)
-    resolution.reverse()
-    f.close()
-
+    # default values
+    config = configparser.ConfigParser()
+    config.read('config.ini')
+    
+    self.application = config['PhotoBooth']['application']
+    self.image_path = config['PhotoBooth']['image_path']
+    self.countdown = int(config['PhotoBooth']['countdown'])
+    self.font_thickness = int(config['PhotoBooth']['font_thickness'])
+    self.font_scale = int(config['PhotoBooth']['font_scale'])
+    self.width = int(config['PhotoBooth']['cam_width'])
+    self.height = int(config['PhotoBooth']['cam_height'])
+    
     self.cam = cv2.VideoCapture(0)
     self.cam.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
-
-    # detect max resolution
-    resolutions = []
-    for row in resolution:
-        self.cam.set(cv2.CAP_PROP_FRAME_WIDTH, row["W"])
-        self.cam.set(cv2.CAP_PROP_FRAME_HEIGHT, row["H"])
-        width = self.cam.get(cv2.CAP_PROP_FRAME_WIDTH)
-        height = self.cam.get(cv2.CAP_PROP_FRAME_HEIGHT)
-        resolutions.append( {"width": width, "height": height})
-
-    # set max resolution
-    bestres = resolutions.pop(1);
-    self.cam.set(cv2.CAP_PROP_FRAME_WIDTH, bestres['width'])
-    self.cam.set(cv2.CAP_PROP_FRAME_HEIGHT, bestres['height'])
-
-    self.width = int(self.cam.get(cv2.CAP_PROP_FRAME_WIDTH))
-    self.height = int(self.cam.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
+    self.cam.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+    self.cam.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
     
     print("Current resolution: " + str(self.width) + "x" + str(self.height) + "\n")
 
@@ -46,13 +34,6 @@ class PhotoBooth():
     self.font = cv2.FONT_HERSHEY_SIMPLEX
     self.font_color = (0, 0, 0)
 
-    # default values
-    config = configparser.ConfigParser()
-    config.read('config.ini')
-    self.image_path = config['PhotoBooth']['image_path']
-    self.countdown = int(config['PhotoBooth']['countdown'])
-    self.font_thickness = int(config['PhotoBooth']['font_thickness'])
-    self.font_scale = int(config['PhotoBooth']['font_scale'])
     
     self.image_seq = len([name for name in os.listdir(self.image_path) if os.path.isfile(name)])
     

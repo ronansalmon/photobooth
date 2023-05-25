@@ -15,5 +15,9 @@ pip install opencv-python
 # running
 ```bash
 source ~/photobooth/bin/activate 
+# detect best resolution and edit config.ini with thoses values
+python guess-resolution.py
+
+# kick off app
 python photobooth.py
 ```
