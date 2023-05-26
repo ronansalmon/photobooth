@@ -3,7 +3,7 @@ import json
 import time
 import os
 import configparser
-
+import multiprocessing as mp
 
 class PhotoBooth():
   def __init__(self):
@@ -20,8 +20,8 @@ class PhotoBooth():
     self.width = int(config['PhotoBooth']['cam_width'])
     self.height = int(config['PhotoBooth']['cam_height'])
     
-    self.cam = cv2.VideoCapture(0)
-    self.cam.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+    self.cam = cv2.VideoCapture(int(config['PhotoBooth']['cam_device']))
+    self.cam.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*config['PhotoBooth']['cam_codec']))
     self.cam.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
     self.cam.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
     
@@ -30,14 +30,37 @@ class PhotoBooth():
     self.snapshot = False
     self.snapshot_started = 0
     self.snapshot_freeze = False
-    self.frame = 0            # live video
     self.font = cv2.FONT_HERSHEY_SIMPLEX
     self.font_color = (0, 0, 0)
 
+    self.image_seq = len([name for name in os.listdir(self.image_path) if os.path.isfile(self.image_path + name)])
     
-    self.image_seq = len([name for name in os.listdir(self.image_path) if os.path.isfile(name)])
+    print('Seq: ' + str(self.image_seq))
+    
+    self.frame_queue = mp.Queue()
+    self.stop_event = mp.Event()
+    self.process = None
+    self.frame = False
+    
+  def start(self):
+    self.process = mp.Process(target=self.read_frame, args=(self.frame_queue, self.stop_event))
+    self.process.start()
+    
+  def stop(self):
+    if self.process is not None:
+      self.process.terminate()
+      self.process.join()
+    if self.cam.isOpened():
+      self.cam.release()
+    cv2.destroyAllWindows()
     
     
+  def read_frame(self, frame_queue, stop_event):
+    while not stop_event.is_set():
+      ret, frame = self.cam.read()
+      frame_queue.put(frame)
+        
+      
   def _text_center(self, text):
 
       textsize = cv2.getTextSize(text, self.font, self.font_scale, self.font_thickness)[0]
@@ -79,37 +102,42 @@ class PhotoBooth():
         self.snapshot_freeze = True
         self.snapshot_started = time.time()
       
-  def run(self):
+  def show(self):
 
     cv2.namedWindow(self.application, cv2.WINDOW_NORMAL)
     cv2.setWindowProperty(self.application, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
     cv2.setMouseCallback(self.application, self._mouse_click)
+    dim = (self.width, self.height)
+    count = 2
     while True:
       try:
-        check, self.frame = self.cam.read()
-        self.take_snapshot()
-        cv2.imshow(self.application, self.frame)
-        
-        key = cv2.waitKey(1)
-        if key == ord('s'):
-          if self.snapshot == False:
-            # not doing anything yet ? go ahead and shoot
-            self.snapshot = True
-            self.snapshot_freeze = True
-            self.snapshot_started = time.time()
-            
+        if not self.frame_queue.empty():
+          self.frame = self.frame_queue.get()
+          self.take_snapshot()
+          cv2.imshow(self.application, self.frame)
+          
+          key = cv2.waitKey(1)
+          if key == ord('s'):
+            if self.snapshot == False:
+              # not doing anything yet ? go ahead and shoot
+              self.snapshot = True
+              self.snapshot_freeze = True
+              self.snapshot_started = time.time()
+              
 
-        elif key == ord('q'):
-          self.cam.release()
-          cv2.destroyAllWindows()
-          break
+          elif key == ord('q'):
+            self.stop()
+            break
+        else:
+#          print("skip " + str(count) + " queue: " + str(self.frame_queue.qsize()))
+          count = count + 1
             
       except(KeyboardInterrupt):
-        self.cam.release()
-        cv2.destroyAllWindows()
+        self.stop()
         break
     
 if __name__ == '__main__':
 
   app = PhotoBooth()
-  app.run()
+  app.start()
+  app.show()

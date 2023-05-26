@@ -3,7 +3,11 @@ image_path = ./images/
 countdown = 3
 font_thickness = 20
 font_scale = 10
-device = 0
+cam_device = 0
+cam_codec = MJPG
 cam_width = 1280
 cam_height = 720
 application = PhotoBooth
+
+
+

@@ -12,6 +12,13 @@ source ~/photobooth/bin/activate
 pip install opencv-python
 ```
 
+detect resolution and codec
+```bash
+
+apt install v4l-utils
+v4l2-ctl --device /dev/video0 --list-formats-ext
+```
+
 # running
 ```bash
 source ~/photobooth/bin/activate 
