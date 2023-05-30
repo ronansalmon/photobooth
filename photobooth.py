@@ -35,12 +35,13 @@ class PhotoBooth():
 
     self.image_seq = len([name for name in os.listdir(self.image_path) if os.path.isfile(self.image_path + name)])
     
-    print('Seq: ' + str(self.image_seq))
+    print('Init seq: ' + str(self.image_seq))
     
     self.frame_queue = mp.Queue()
     self.stop_event = mp.Event()
     self.process = None
     self.frame = False
+    self.frame_previous = False
     
   def start(self):
     self.process = mp.Process(target=self.read_frame, args=(self.frame_queue, self.stop_event))
@@ -108,29 +109,31 @@ class PhotoBooth():
     cv2.setWindowProperty(self.application, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
     cv2.setMouseCallback(self.application, self._mouse_click)
     dim = (self.width, self.height)
-    count = 2
+
     while True:
       try:
         if not self.frame_queue.empty():
           self.frame = self.frame_queue.get()
-          self.take_snapshot()
-          cv2.imshow(self.application, self.frame)
-          
-          key = cv2.waitKey(1)
-          if key == ord('s'):
-            if self.snapshot == False:
-              # not doing anything yet ? go ahead and shoot
-              self.snapshot = True
-              self.snapshot_freeze = True
-              self.snapshot_started = time.time()
-              
-
-          elif key == ord('q'):
-            self.stop()
-            break
+          self.frame_previous = self.frame
         else:
-#          print("skip " + str(count) + " queue: " + str(self.frame_queue.qsize()))
-          count = count + 1
+          # use the last virgin frame
+          self.frame = self.frame_previous
+
+        self.take_snapshot()
+        cv2.imshow(self.application, self.frame)
+        
+        key = cv2.waitKey(1)
+        if key == ord('s'):
+          if self.snapshot == False:
+            # not doing anything yet ? go ahead and shoot
+            self.snapshot = True
+            self.snapshot_freeze = True
+            self.snapshot_started = time.time()
+            
+
+        elif key == ord('q'):
+          self.stop()
+          break
             
       except(KeyboardInterrupt):
         self.stop()
