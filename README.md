@@ -19,7 +19,7 @@ apt install v4l-utils
 v4l2-ctl --device /dev/video0 --list-formats-ext
 ```
 
-# running
+# running photobooth
 ```bash
 source ~/photobooth/bin/activate 
 # detect best resolution and edit config.ini with thoses values
@@ -28,3 +28,12 @@ python guess-resolution.py
 # kick off app
 python photobooth.py
 ```
+
+# running lcd/rsync
+```bash
+source ~/photobooth/bin/activate 
+
+python rsync.py
+```
+
+

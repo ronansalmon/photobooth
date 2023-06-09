@@ -4,6 +4,7 @@ import time
 import os
 import configparser
 import multiprocessing as mp
+import copy
 
 class PhotoBooth():
   def __init__(self):
@@ -19,6 +20,11 @@ class PhotoBooth():
     self.font_scale = int(config['PhotoBooth']['font_scale'])
     self.width = int(config['PhotoBooth']['cam_width'])
     self.height = int(config['PhotoBooth']['cam_height'])
+    self.crope = int(config['PhotoBooth']['crope'])
+    self.crope_x = int(config['PhotoBooth']['crope_x'])
+    self.crope_y = int(config['PhotoBooth']['crope_y'])
+    self.crope_h = int(config['PhotoBooth']['crope_h'])
+    self.crope_w = int(config['PhotoBooth']['crope_w'])
     
     self.cam = cv2.VideoCapture(int(config['PhotoBooth']['cam_device']))
     self.cam.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*config['PhotoBooth']['cam_codec']))
@@ -31,7 +37,7 @@ class PhotoBooth():
     self.snapshot_started = 0
     self.snapshot_freeze = False
     self.font = cv2.FONT_HERSHEY_SIMPLEX
-    self.font_color = (0, 0, 0)
+    self.font_color = (0, 255, 0)
 
     self.image_seq = len([name for name in os.listdir(self.image_path) if os.path.isfile(self.image_path + name)])
     
@@ -41,7 +47,7 @@ class PhotoBooth():
     self.stop_event = mp.Event()
     self.process = None
     self.frame = False
-    self.frame_previous = False
+    self.frame_org = False
     
   def start(self):
     self.process = mp.Process(target=self.read_frame, args=(self.frame_queue, self.stop_event))
@@ -59,21 +65,28 @@ class PhotoBooth():
   def read_frame(self, frame_queue, stop_event):
     while not stop_event.is_set():
       ret, frame = self.cam.read()
-      frame_queue.put(frame)
+      if self.crope == 1:
+        img = frame[self.crope_y:self.crope_y+self.crope_h, self.crope_x:self.crope_x+self.crope_w]
+        frame_queue.put(img)
+      else:
+        frame_queue.put(frame)
         
       
   def _text_center(self, text):
-
-      textsize = cv2.getTextSize(text, self.font, self.font_scale, self.font_thickness)[0]
-      # get coords based on boundary
+    # text centered vertiacally and horizontally
+    textsize = cv2.getTextSize(text, self.font, self.font_scale, self.font_thickness)[0]
+    # get coords based on boundary
+    if self.crope == 1:
+      textX = int(self.crope_w/2 - (textsize[0] / 2))
+      textY = int(self.crope_h/2 + (textsize[1] / 2))
+    else:
       textX = int(self.width/2 - (textsize[0] / 2))
       textY = int(self.height/2 + (textsize[1] / 2))
-      return (textX,textY)
+    return (textX,textY)
     
   def take_snapshot(self):
+    display_time = self.countdown - int(time.time() - self.snapshot_started)
     if self.snapshot:
-      
-      display_time = self.countdown - int(time.time() - self.snapshot_started)
 
       if display_time >= 0:
         # countdown running
@@ -83,20 +96,20 @@ class PhotoBooth():
       else:
         if self.snapshot_freeze == True:
           # snapshot time
-          cv2.imwrite('{}photobooth_{}.{}'.format(self.image_path, self.image_seq, 'png'), img=self.frame)
+          cv2.imwrite('{}photobooth_{}.{}'.format(self.image_path, self.image_seq, 'png'), img=self.frame_org)
           self.image_seq += 1
           self.snapshot_freeze = False
           self.snapshot = False
-        else:
-          if display_time > -3:
-            text = "Merci!"
-            (textX,textY) = self._text_center(text)
-            
-            cv2.putText(self.frame, text, (textX,textY), self.font, self.font_scale, self.font_color, self.font_thickness, cv2.LINE_AA)
+    else:
+      if display_time > -3:
+        text = "Merci!"
+        (textX,textY) = self._text_center(text)
+        
+        cv2.putText(self.frame, text, (textX,textY), self.font, self.font_scale, self.font_color, self.font_thickness, cv2.LINE_AA)
 
           
   def _mouse_click(self, event, x, y, flags, param):
-    if event == cv2.EVENT_LBUTTONDOWN:
+    if event == cv2.EVENT_LBUTTONUP:
       if self.snapshot == False:
         # not doing anything yet ? go ahead and shoot
         self.snapshot = True
@@ -105,19 +118,18 @@ class PhotoBooth():
       
   def show(self):
 
+    # start in full screen mode
     cv2.namedWindow(self.application, cv2.WINDOW_NORMAL)
     cv2.setWindowProperty(self.application, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
     cv2.setMouseCallback(self.application, self._mouse_click)
-    dim = (self.width, self.height)
 
     while True:
       try:
         if not self.frame_queue.empty():
-          self.frame = self.frame_queue.get()
-          self.frame_previous = self.frame
-        else:
-          # use the last virgin frame
-          self.frame = self.frame_previous
+          self.frame_org = self.frame_queue.get()
+
+        # use the last virgin frame
+        self.frame = copy.copy(self.frame_org)
 
         self.take_snapshot()
         cv2.imshow(self.application, self.frame)

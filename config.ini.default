@@ -8,6 +8,14 @@ cam_codec = MJPG
 cam_width = 1280
 cam_height = 720
 application = PhotoBooth
+crope = 0
+crope_x = 0
+crope_y = 0
+crope_h = 1080
+crope_w = 1920
 
-
-
+[LCD1602]
+lcd_address = 0x27
+lcd_bus_number = 0
+lcd_width = 16
+lcd_rows = 2
