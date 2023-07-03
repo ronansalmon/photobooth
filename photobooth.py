@@ -5,6 +5,7 @@ import os
 import configparser
 import multiprocessing as mp
 import copy
+from tkinter import Tk, messagebox 
 
 class PhotoBooth():
   def __init__(self):
@@ -12,7 +13,8 @@ class PhotoBooth():
     # default values
     config = configparser.ConfigParser()
     config.read('config.ini')
-    
+
+    self.mouse_down_since = 0
     self.application = config['PhotoBooth']['application']
     self.image_path = config['PhotoBooth']['image_path']
     self.countdown = int(config['PhotoBooth']['countdown'])
@@ -109,13 +111,32 @@ class PhotoBooth():
 
           
   def _mouse_click(self, event, x, y, flags, param):
+    if event == cv2.EVENT_LBUTTONDOWN:
+      self.mouse_down_since = int(time.time())
+
     if event == cv2.EVENT_LBUTTONUP:
-      if self.snapshot == False:
-        # not doing anything yet ? go ahead and shoot
-        self.snapshot = True
-        self.snapshot_freeze = True
-        self.snapshot_started = time.time()
-      
+      if int(time.time() - self.mouse_down_since) > 6:
+        # someone wants to clean up everything ?
+        self.mouse_down_since = 0
+        root = Tk()
+        root.withdraw()  # Masquer la fenêtre principale
+        response = messagebox.askyesno("Cleaning up", "Voulez vous effacer toutes les images déjà enregistrée ?")      
+        root.grab_set()
+
+        if response == True:
+          for fichier in os.listdir(self.image_path):
+            chemin_fichier = os.path.join(self.image_path, fichier)
+            if os.path.isfile(chemin_fichier):
+              os.remove(chemin_fichier)
+        root.destroy()
+
+      else:
+        if self.snapshot == False:
+          # not doing anything yet ? go ahead and shoot
+          self.snapshot = True
+          self.snapshot_freeze = True
+          self.snapshot_started = time.time()
+        
   def show(self):
 
     # start in full screen mode
