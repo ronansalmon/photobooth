@@ -5,7 +5,7 @@ import os
 import configparser
 import multiprocessing as mp
 import copy
-from tkinter import Tk, messagebox 
+from tkinter import Tk, messagebox
 
 class PhotoBooth():
   def __init__(self):
@@ -22,17 +22,17 @@ class PhotoBooth():
     self.font_scale = int(config['PhotoBooth']['font_scale'])
     self.width = int(config['PhotoBooth']['cam_width'])
     self.height = int(config['PhotoBooth']['cam_height'])
+    self.display_width = int(config['PhotoBooth']['display_width'])
+    self.display_height = int(config['PhotoBooth']['display_height'])
     self.crope = int(config['PhotoBooth']['crope'])
     self.crope_x = int(config['PhotoBooth']['crope_x'])
     self.crope_y = int(config['PhotoBooth']['crope_y'])
     self.crope_h = int(config['PhotoBooth']['crope_h'])
     self.crope_w = int(config['PhotoBooth']['crope_w'])
-    
-    self.cam = cv2.VideoCapture(int(config['PhotoBooth']['cam_device']))
-    self.cam.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*config['PhotoBooth']['cam_codec']))
-    self.cam.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
-    self.cam.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
-    
+    self.cam_device = int(config['PhotoBooth']['cam_device'])
+    self.cam_codec = config['PhotoBooth']['cam_codec']
+    self.cam = cv2.VideoCapture(self.cam_device)
+    self.cam.release()
     print("Current resolution: " + str(self.width) + "x" + str(self.height) + "\n")
 
     self.snapshot = False
@@ -47,6 +47,7 @@ class PhotoBooth():
     
     self.frame_queue = mp.Queue()
     self.stop_event = mp.Event()
+    self.snapshot_event = mp.Event()
     self.process = None
     self.frame = False
     self.frame_org = False
@@ -65,13 +66,28 @@ class PhotoBooth():
     
     
   def read_frame(self, frame_queue, stop_event):
+    need_init = True
     while not stop_event.is_set():
-      ret, frame = self.cam.read()
-      if self.crope == 1:
-        img = frame[self.crope_y:self.crope_y+self.crope_h, self.crope_x:self.crope_x+self.crope_w]
-        frame_queue.put(img)
+      if self.snapshot_event.is_set():
+        self.cam.release()
+        time.sleep(0.5)
+        need_init = True
       else:
-        frame_queue.put(frame)
+        if need_init:
+          self.cam = cv2.VideoCapture(self.cam_device)
+          self.cam.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*self.cam_codec))
+          self.cam.set(cv2.CAP_PROP_FRAME_WIDTH, self.display_width)
+          self.cam.set(cv2.CAP_PROP_FRAME_HEIGHT, self.display_height)
+          need_init = False
+
+        ret, frame = self.cam.read()
+        frame = cv2.rotate(frame, cv2.ROTATE_180)
+
+        if self.crope == 1:
+          img = frame[self.crope_y:self.crope_y+self.crope_h, self.crope_x:self.crope_x+self.crope_w]
+          frame_queue.put(img)
+        else:
+          frame_queue.put(frame)
         
       
   def _text_center(self, text):
@@ -82,8 +98,8 @@ class PhotoBooth():
       textX = int(self.crope_w/2 - (textsize[0] / 2))
       textY = int(self.crope_h/2 + (textsize[1] / 2))
     else:
-      textX = int(self.width/2 - (textsize[0] / 2))
-      textY = int(self.height/2 + (textsize[1] / 2))
+      textX = int(self.display_width/2 - (textsize[0] / 2))
+      textY = int(self.display_height/2 + (textsize[1] / 2))
     return (textX,textY)
     
   def take_snapshot(self):
@@ -97,13 +113,36 @@ class PhotoBooth():
         cv2.putText(self.frame, str(display_time), (textX,textY), self.font, self.font_scale, self.font_color, self.font_thickness, cv2.LINE_AA)
       else:
         if self.snapshot_freeze == True:
-          # snapshot time
-          cv2.imwrite('{}photobooth_{}.{}'.format(self.image_path, self.image_seq, 'png'), img=self.frame_org)
-          self.image_seq += 1
-          self.snapshot_freeze = False
-          self.snapshot = False
+
+          self.snapshot_event.set()
+          # make sure read_frame pause
+          time.sleep(0.2)
+          try:
+            # change resolution for screenshot
+            self.cam.release()
+            self.cam = cv2.VideoCapture(self.cam_device)
+            self.cam.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*self.cam_codec))
+            self.cam.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+            self.cam.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+
+            ret, full_frame = self.cam.read()
+            full_frame = cv2.rotate(full_frame, cv2.ROTATE_180) if ret else None
+            
+            # snapshot time
+            cv2.imwrite('{}photobooth_{}.{}'.format(self.image_path, self.image_seq, 'png'), img=full_frame)
+            
+            self.cam.release()
+            print("{}photobooth_{}.{}".format(self.image_path, self.image_seq, 'png'))
+
+          finally:
+            self.snapshot_event.clear()
+            self.image_seq += 1
+            self.snapshot_freeze = False
+            self.snapshot = False
+            # make sure read_frame resume
+            time.sleep(0.5)
     else:
-      if display_time > -3:
+      if display_time > -5:
         text = "Merci!"
         (textX,textY) = self._text_center(text)
         
@@ -151,10 +190,12 @@ class PhotoBooth():
 
         # use the last virgin frame
         self.frame = copy.copy(self.frame_org)
-
         self.take_snapshot()
-        cv2.imshow(self.application, self.frame)
-        
+        try:
+          cv2.imshow(self.application, self.frame)
+        except:
+          pass
+
         key = cv2.waitKey(1)
         if key == ord('s'):
           if self.snapshot == False:
@@ -167,8 +208,8 @@ class PhotoBooth():
         elif key == ord('q'):
           self.stop()
           break
-            
-      except(KeyboardInterrupt):
+
+      except KeyboardInterrupt:
         self.stop()
         break
     
